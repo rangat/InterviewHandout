@@ -47,9 +47,10 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
             db.update_one({"_id":worker_hash}, {"active": True})
             try:
                 worker_main(worker_hash, db)
-                db.update_one({"_id":worker_hash}, {"active": False})
                 break
             except Exception:
+                pass
+            finally:
                 db.update_one({"_id":worker_hash}, {"active": False})
 
         runtime+=retry_interval
