@@ -43,7 +43,7 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
 
     try:
         db.insert_one({"_id": worker_hash, 'time': time.time()})
-    except Exception('DuplicateKeyError'):
+    except Exception:
         db.update_one({"_id": worker_hash}, {'time': time.time()})
     
     runtime = 0
@@ -53,7 +53,7 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
                 worker_main(worker_hash, db)
                 db.delete_one({"_id":worker_hash})
                 break
-            except Exception("Crash"):
+            except Exception:
                 pass
                 
 
