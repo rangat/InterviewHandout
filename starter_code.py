@@ -1,11 +1,13 @@
 import mock_db
 import uuid
 from worker import worker_main
-from threading import Thread
+from threading import Thread, Lock
 import time
 import sys
 
-def lock_is_free(db, worker_hash):
+mutex = Lock()
+
+def lock_is_free():
     """
         CHANGE ME, POSSIBLY MY ARGS
 
@@ -14,16 +16,8 @@ def lock_is_free(db, worker_hash):
         Args:
             db: an instance of MockDB
     """
-    smallest_time = sys.maxsize
-    matching_hash = ''
-    for obj in db.find_many({}):
-        if obj.get('time') < smallest_time:
-            smallest_time = obj.get('time')
-            matching_hash = obj.get('_id')
-    if worker_hash == matching_hash:
-        return True
-
-    return False
+    
+    return mutex.acquire()
 
 
 def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
@@ -40,22 +34,17 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
                             until the lock is free, unless we have been trying for more
                             than give_up_after seconds
     """
-
-    try:
-        db.insert_one({"_id": worker_hash, 'time': time.time()})
-    except Exception:
-        db.update_one({"_id": worker_hash}, {'time': time.time()})
     
     runtime = 0
     while runtime < give_up_after:
-        if lock_is_free(db, worker_hash):
+        if lock_is_free():
             try:
                 worker_main(worker_hash, db)
-                db.delete_one({"_id":worker_hash})
                 break
             except Exception:
                 pass
-                
+            finally:
+                mutex.release()
 
         runtime+=retry_interval
         time.sleep(retry_interval)
