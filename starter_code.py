@@ -2,9 +2,10 @@ import mock_db
 import uuid
 from worker import worker_main
 from threading import Thread
-from time import sleep
+import time
+import sys
 
-def lock_is_free(db):
+def lock_is_free(db, worker_hash):
     """
         CHANGE ME, POSSIBLY MY ARGS
 
@@ -13,8 +14,13 @@ def lock_is_free(db):
         Args:
             db: an instance of MockDB
     """
-
-    if db.count({'active':True}) == 0:
+    smallest_time = sys.maxsize
+    matching_hash = ''
+    for obj in db.find_many({}):
+        if obj.get('time') < smallest_time:
+            smallest_time = obj.get('time')
+            matching_hash = obj.get('_id')
+    if worker_hash == matching_hash:
         return True
 
     return False
@@ -36,25 +42,23 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
     """
 
     try:
-        db.insert_one({"_id": worker_hash, "active":False})
-        # sleep(retry_interval) # Might not need this line
-    except Exception:
-        pass
+        db.insert_one({"_id": worker_hash, 'time': time.time()})
+    except Exception('DuplicateKeyError'):
+        db.update_one({"_id": worker_hash}, {'time': time.time()})
     
     runtime = 0
     while runtime < give_up_after:
-        if lock_is_free(db):
-            db.update_one({"_id":worker_hash}, {"active": True})
+        if lock_is_free(db, worker_hash):
             try:
                 worker_main(worker_hash, db)
+                db.delete_one({"_id":worker_hash})
                 break
-            except Exception:
+            except Exception("Crash"):
                 pass
-            finally:
-                db.update_one({"_id":worker_hash}, {"active": False})
+                
 
         runtime+=retry_interval
-        sleep(retry_interval)
+        time.sleep(retry_interval)
 
 if __name__ == "__main__":
     """
